@@ -87,8 +87,8 @@ the diagnosis, so never read a hang as "wrong port".
 `--remote-debugging-port` on the default profile (Chrome no longer offers it),
 `chromium.connectOverCDP` (it calls HTTP `/json/version` first, and the inspect endpoint
 answers 404 to every HTTP path), and copying the profile's `Cookies` while Chrome runs (SQLite
-holds an exclusive lock). The endpoint takes `ws://127.0.0.1:<port>/devtools/browser` and
-nothing above it. `CDP_PORT` overrides the port discovery.
+holds an exclusive lock). The endpoint takes `ws://127.0.0.1:<port>/devtools/browser`, and
+`CDP_PORT` overrides the port discovery.
 
 ## Commands
 
