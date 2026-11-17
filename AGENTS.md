@@ -11,6 +11,11 @@ in any location.
 
 `README.md` lists the skills; do not repeat that list here.
 
+The sibling repositories are [`dsh-config`](https://github.com/jacano/dsh-config) (the
+Harness configuration) and [`model-bench`](https://github.com/jacano/model-bench) (the
+benchmark that chooses its models). A skill here may call into either; say so in the
+skill rather than copying their content.
+
 ## Picking one up
 
 1. Read the skill's `SKILL.md` in full before running anything. These procedures exist
