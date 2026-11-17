@@ -47,10 +47,10 @@ function daemonPid() {
 }
 
 /** Ask the daemon to run one command. Resolves to {ok, result, error}. */
-function call(cmd, args = {}, { waitMs = 60000, needsDaemon = true } = {}) {
+function call(cmd, args = {}, { waitMs = 60000 } = {}) {
   // Fail in a millisecond when nothing is listening, rather than sitting on a deadline:
   // the answer to "is there a daemon" is in the pid file, not in a timeout.
-  if (needsDaemon && !daemonPid()) {
+  if (!daemonPid()) {
     return { ok: false, error: 'no daemon is attached to Chrome; run: node chrome-cdp/cdp.mjs start' };
   }
   fs.mkdirSync(QUEUE, { recursive: true });
@@ -132,7 +132,7 @@ function parse(argv) {
       continue;
     }
     const name = a.slice(2);
-    if (['wait', 'foreground', 'json'].includes(name)) flags[name] = true;
+    if (['wait', 'foreground'].includes(name)) flags[name] = true;
     else flags[name] = argv[++i];
   }
   return { flags, rest };
