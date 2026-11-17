@@ -10,8 +10,8 @@ This skill drives the person's *own* Chrome — the one with their session, cook
 so a page that needs a login can be read, and a site does not challenge it the way it
 challenges a fresh automated browser.
 
-Two scripts, [`cdp-daemon.mjs`](cdp-daemon.mjs) and [`cdp.mjs`](cdp.mjs), and this file. No
-dependencies; Node 22 or later for the global `WebSocket`. Nothing to install.
+Two scripts, [`cdp-daemon.mjs`](cdp-daemon.mjs) and [`cdp.mjs`](cdp.mjs), and this file.
+Nothing to install: Node 22 or later, for the global `WebSocket`.
 
 ## The one rule
 

@@ -8,7 +8,7 @@ it is a task that fails silently when it is done by guesswork.
 | [`chrome-cdp/`](chrome-cdp/SKILL.md) | Drives the person's own Chrome — already signed in — over the DevTools protocol, and keeps the one connection Chrome allows alive. | Node 22+ |
 
 Read a skill's `SKILL.md`, then run its scripts from the root of this repository. No
-dependencies, nothing to install.
+packages, nothing to install.
 
 ## Where this sits
 

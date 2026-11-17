@@ -1,8 +1,8 @@
 # AGENTS.md — agent-skills
 
 One directory per skill: a `SKILL.md` (the procedure and the failure it prevents) and the
-scripts that carry it out. No dependencies, and state in the system temp directory, so a
-clone anywhere works. [`README.md`](README.md) lists the skills.
+scripts that carry it out. No packages; state lives in the system temp directory, so a clone
+anywhere works. [`README.md`](README.md) lists the skills.
 
 ## Picking one up
 
@@ -15,8 +15,8 @@ repository, and report what happened — including the parts it says were never 
   their language.
 - **A skill earns its place** by the failure it prevents; what a tool's own documentation
   covers is not a skill.
-- **Keep the code in the skill's directory, and dependency-free**: a skill that needs an
-  install is a skill that fails on a machine with no network.
+- **Keep the code in the skill's directory, with nothing to install**: a skill that needs a
+  package is a skill that fails on a machine with no network.
 - **Say what was tested, when and where, and what was not.**
 - **Commits** are Conventional Commits: imperative, lowercase, no trailing period, under 72
   characters (`feat(chrome-cdp): …`).
