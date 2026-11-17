@@ -57,7 +57,8 @@ That page is worth knowing for two reasons:
   cannot;
 - it is the only place the grant is given, and the only place it is taken back.
 
-Some builds need Chrome restarted once before that page appears at all.
+If there is no **Remote debugging** page at all, the Chrome predates it — see the table
+below.
 
 **3. This directory.** A clone is enough. The scripts have no dependencies and keep their
 state in the system temp directory, so a clone anywhere works.
@@ -83,7 +84,7 @@ and without writing any state:
 
 `open` is the answer you want. An empty `ports` list means no Chrome is listening, or the
 port could not be discovered — see the table below. `hung` and `refused` are the two
-failures described in the next section.
+failures described under **The two failures**, further down.
 
 ### First run
 
