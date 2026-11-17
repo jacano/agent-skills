@@ -1,27 +1,27 @@
 ---
 name: chrome-cdp
 description: Drive the person's own Chrome — already signed in — over the DevTools protocol, and keep that one connection alive. Use when a task needs a page that only exists logged in in their browser, a tab they already have open, or a site that blocks a fresh automated browser.
-version: 1.1.0
+version: 1.2.0
 ---
 
 # chrome-cdp
 
-Three files: this one, [`cdp-daemon.mjs`](cdp-daemon.mjs) and [`cdp.mjs`](cdp.mjs). No
-dependencies; Node 22 or later for the global `WebSocket`. Nothing to install.
+This skill drives the person's *own* Chrome — the one with their session, cookies and tabs —
+so a page that needs a login can be read, and a site does not challenge it the way it
+challenges a fresh automated browser.
 
-They drive the person's *own* Chrome — the one with their session, cookies and tabs — so a
-page that needs a login can be read, and a site does not challenge it the way it challenges a
-fresh automated browser.
+Two scripts, [`cdp-daemon.mjs`](cdp-daemon.mjs) and [`cdp.mjs`](cdp.mjs), and this file. No
+dependencies; Node 22 or later for the global `WebSocket`. Nothing to install.
 
 ## The one rule
 
 **Chrome grants remote debugging to one external client per armed session.** The grant is
-spent by the connect, and closing the socket does not return it: the next attempt hangs with
-no error until a person re-arms the box. So one long-lived process owns the socket and
-nothing else opens one. Never reconnect in a loop.
+spent by the connect, and closing the socket does not return it: the next attempt hangs, with
+no error, until a person re-arms the box. So one long-lived process owns the socket, and
+nothing else opens one.
 
-(A Chrome launched with `--remote-debugging-port` on a throwaway profile accepts several
-clients. That is the test profile, not the person's.)
+A Chrome started with `--remote-debugging-port` on a throwaway profile takes several clients.
+That is the test profile, not theirs.
 
 ## A new machine, from nothing
 
@@ -33,12 +33,12 @@ node -e "console.log(typeof WebSocket)"    # must print: function
 ```
 
 `WebSocket` is the whole transport. The daemon stops on its first line without it, because a
-missing global and a missing Chrome otherwise both surface as `refused`.
+missing global and a missing Chrome otherwise both look like `refused`.
 
 **2. Chrome, running, with remote debugging allowed — once.** Open `chrome://inspect` →
 **Remote debugging** → check **Allow remote debugging for this browser instance**. That page
 prints `Server running at: 127.0.0.1:<port>`: the port is random and the daemon finds it, but
-that is where to read it by eye, and it is the only place the grant is given or taken back.
+that is where to read it by eye. It is also the only place the grant is given or taken back.
 
 **3. This directory.** A clone is enough; state lives in the system temp directory.
 
@@ -62,33 +62,28 @@ node chrome-cdp/cdp.mjs eval "location.href"
 
 That must print a URL. If it does, the machine is ready.
 
-### When it will not cooperate
+## When it goes wrong
 
-| Symptom | Do |
-| --- | --- |
-| `node: command not found`, or `typeof WebSocket` is `undefined` | Install Node 22 or newer. |
-| `{ "ports": [] }` | No Chrome listening. On a Linux without `lsof`, read the port from `chrome://inspect` and pass `CDP_PORT=<port>`. |
-| The box cannot be checked | The browser is managed and a policy forbids remote debugging (`RemoteDebuggingAllowed`). Only a separate Chrome with `--remote-debugging-port` and its own `--user-data-dir` gets round it, and it will not carry their session. |
-| No **Remote debugging** page at all | An older Chrome. `--remote-debugging-port=9222` means closing it first and losing the running session. |
-| They browse in Edge, Brave or Chromium | Read the port from their own `edge://inspect` and pass `CDP_PORT=<port>`. |
-
-## The two failures, and they are not the same
-
-| The daemon says | Means | Do |
+| The symptom | The cause | Do |
 | --- | --- | --- |
-| `refused` | Nothing on those ports speaks DevTools: Chrome is closed, or the box is unchecked. | Open `chrome://inspect/#remote-debugging`, check the box, `start` again. |
-| `hung` | The server is there and said nothing: the one slot is taken, by a dead daemon or a spent grant. | **Uncheck, wait a second, re-check** the box. Then `start` once. |
+| `node: command not found`, or `typeof WebSocket` is `undefined` | No Node, or an old one | Install Node 22 or newer. |
+| `{ "ports": [] }` | No Chrome listening, or discovery cannot see it | Start Chrome. On a Linux without `lsof`, read the port from `chrome://inspect` and pass `CDP_PORT=<port>`. |
+| `refused` | Nothing on those ports speaks DevTools: Chrome is closed, or the box is unchecked | Check the box in `chrome://inspect/#remote-debugging`, then `start` again. |
+| `hung` | The server is there and said nothing: the one slot is taken, by a dead daemon or a spent grant | **Uncheck, wait a second, re-check** the box. Then `start` once. |
+| The box cannot be checked | The browser is managed, and a policy forbids remote debugging (`RemoteDebuggingAllowed`) | Only a separate Chrome with `--remote-debugging-port` and its own `--user-data-dir` gets round it, and it will not carry their session. |
+| No **Remote debugging** page at all | An older Chrome | `--remote-debugging-port=9222` works, but it means closing Chrome and losing the running session. |
+| They browse in Edge, Brave or Chromium | Discovery looks for a process named `chrome` | Read the port from their own `edge://inspect` and pass `CDP_PORT=<port>`. |
 
-`refused` answers in milliseconds, `hung` costs the full 6-second probe: that difference is
-the diagnosis, so never read a hang as "wrong port".
+`refused` answers in milliseconds and `hung` costs the full six-second probe, so a hang is
+never a wrong port.
 
 ## What not to reach for
 
-`--remote-debugging-port` on the default profile (Chrome no longer offers it),
-`chromium.connectOverCDP` (it calls HTTP `/json/version` first, and the inspect endpoint
-answers 404 to every HTTP path), and copying the profile's `Cookies` while Chrome runs (SQLite
-holds an exclusive lock). The endpoint takes `ws://127.0.0.1:<port>/devtools/browser`, and
-`CDP_PORT` overrides the port discovery.
+Three dead ends, each costing an afternoon: `--remote-debugging-port` on the default profile
+(Chrome no longer offers it), `chromium.connectOverCDP` (it calls HTTP `/json/version` first,
+and the inspect endpoint answers 404 to every HTTP path), and copying the profile's `Cookies`
+while Chrome runs (SQLite keeps an exclusive lock). The endpoint takes
+`ws://127.0.0.1:<port>/devtools/browser`; `CDP_PORT` overrides the discovery.
 
 ## Commands
 
@@ -127,12 +122,12 @@ node chrome-cdp/cdp.mjs close <targetId>
 
 - **Do not tidy up the socket.** `stop` is for a deliberate restart; re-attaching costs a
   person's click.
-- **Do not kill Chrome**, and do not launch a second Chrome on their profile: that destroys
-  the session you came for.
+- **Do not kill Chrome**, and do not start a second Chrome on their profile: that destroys the
+  session you came for.
 - **Background by default**, and no `activate` unless they have to look. `shot` does bring a
   tab forward; say so.
-- **Their session is their identity.** Reading is yours; pressing a button that spends money,
-  sends a message or deletes something is theirs to approve.
+- **Their session is their identity.** Reading is yours; a button that spends money, sends a
+  message or deletes something is theirs to approve.
 - **Close what you open, keep what was theirs.**
 
 The "Chrome is being controlled by automated test software" banner is expected while the

@@ -6,10 +6,8 @@ clone anywhere works. [`README.md`](README.md) lists the skills.
 
 ## Picking one up
 
-1. Read its `SKILL.md` in full before running anything. These exist because the obvious
-   version of the task fails silently.
-2. Run its scripts from the root of this repository, in the paths the `SKILL.md` shows.
-3. Report what happened, including the parts it says were never tested.
+Read its `SKILL.md` in full before running anything, run its scripts from the root of this
+repository, and report what happened — including the parts it says were never tested.
 
 ## Conventions
 

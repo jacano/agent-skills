@@ -1,7 +1,7 @@
 # agent-skills
 
-Procedures an agent follows, each with the code it needs beside it. A skill here is not a
-prompt: it is a task that fails silently when it is done by guesswork.
+Procedures an agent follows, each with the code it needs beside it. A skill is not a prompt:
+it is a task that fails silently when it is done by guesswork.
 
 | Skill | Does | Needs |
 | --- | --- | --- |
