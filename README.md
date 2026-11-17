@@ -14,9 +14,9 @@ dependencies, nothing to install.
 
 | Repository | Holds |
 | --- | --- |
-| **agent-skills** (here) | What an agent should do, and the code that does it. |
-| [`dsh-config`](https://github.com/jacano/dsh-config) | The DeepSeek Harness configuration: providers and the model menu. |
-| [`model-bench`](https://github.com/jacano/model-bench) | The benchmark that chooses those models, and the page it publishes. |
+| **agent-skills** (here) | Procedures an agent follows, with the code they need. |
+| [dsh-config](https://github.com/jacano/dsh-config) | The DeepSeek Harness configuration: providers and the model menu. |
+| [model-bench](https://github.com/jacano/model-bench) | The benchmark that chooses the model menu, and the page it publishes. |
 
 ## Licence
 

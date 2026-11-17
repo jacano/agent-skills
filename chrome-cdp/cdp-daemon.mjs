@@ -17,9 +17,9 @@
  *   <queue>/<id>.res.json  { "id": "x", "ok": true, "result": ... }
  *                          { "id": "x", "ok": false, "error": "..." }
  *
- * Usage:  node cdp-daemon.mjs            # discover the port, attach, serve
- *         CDP_PORT=9333 node cdp-daemon.mjs
- *         node cdp-daemon.mjs --probe    # report what discovery finds, then exit
+ * Usage:  node chrome-cdp/cdp-daemon.mjs            # discover the port, attach, serve
+ *         CDP_PORT=9333 node chrome-cdp/cdp-daemon.mjs
+ *         node chrome-cdp/cdp-daemon.mjs --probe    # what discovery finds, then exit
  */
 
 import fs from 'node:fs';

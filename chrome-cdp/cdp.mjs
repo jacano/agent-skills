@@ -6,14 +6,10 @@
  * queue and reads the reply. That is deliberate: Chrome arms remote debugging for one
  * external client, so the socket belongs to the daemon and to nothing else.
  *
- *   node cdp.mjs start                       # attach once (idempotent)
- *   node cdp.mjs ping
- *   node cdp.mjs targets
- *   node cdp.mjs eval "document.title"
- *   node cdp.mjs eval --url mail.google.com --wait "!!document.querySelector('tr.zA')"
- *   node cdp.mjs open https://example.com    # background tab, focus untouched
- *   node cdp.mjs shot page.png --url example.com
- *   node cdp.mjs stop
+ *   node chrome-cdp/cdp.mjs start            # attach once (idempotent)
+ *   node chrome-cdp/cdp.mjs eval --url example.com "document.title"
+ *   node chrome-cdp/cdp.mjs open https://example.com    # background tab, focus untouched
+ *   node chrome-cdp/cdp.mjs stop
  *
  * Every command prints JSON on stdout and exits non-zero on failure.
  */
