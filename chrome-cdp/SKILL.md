@@ -27,6 +27,85 @@ hangs with no error at all until a person goes back to the checkbox. Therefore:
 A Chrome launched with `--remote-debugging-port` on a throwaway profile behaves
 differently and accepts several clients. That is the test profile, not the person's.
 
+## A new machine, from nothing
+
+Nothing is installed for this skill: no `npm install`, no package, no build step, no
+configuration file. Two things have to exist on the machine, and one of them has to be
+allowed once.
+
+**1. Node 22 or newer.**
+
+```bash
+node --version                             # v22.x or later; written on v24
+node -e "console.log(typeof WebSocket)"    # must print: function
+```
+
+`WebSocket` is the entire transport: the daemon speaks the DevTools protocol over it. On an
+older Node the daemon stops on its first line and says so, because the alternative is
+worse: a missing global and a missing Chrome both surface as `refused`, and the second one
+sends you looking at the wrong program.
+
+**2. Chrome, running, with remote debugging allowed — once.**
+
+In the browser, open a tab and go to `chrome://inspect`, then **Remote debugging** in the
+left column, and check **Allow remote debugging for this browser instance**.
+
+That page is worth knowing for two reasons:
+
+- it prints **where it listens**, `Server running at: 127.0.0.1:<port>`. The port is random
+  and the daemon finds it on its own, but this is where to read it by eye when discovery
+  cannot;
+- it is the only place the grant is given, and the only place it is taken back.
+
+Some builds need Chrome restarted once before that page appears at all.
+
+**3. This directory.** A clone is enough. The scripts have no dependencies and keep their
+state in the system temp directory, so a clone anywhere works.
+
+```bash
+git clone https://github.com/jacano/agent-skills
+cd agent-skills
+```
+
+### Check the machine before blaming the skill
+
+```bash
+node chrome-cdp/cdp-daemon.mjs --probe
+```
+
+It lists every port a Chrome is listening on and what each one answers, without attaching
+and without writing any state:
+
+```
+{ "ports": [ 62442 ] }
+  62442: open Chrome/157.0.8103.78
+```
+
+`open` is the answer you want. An empty `ports` list means no Chrome is listening, or the
+port could not be discovered — see the table below. `hung` and `refused` are the two
+failures described in the next section.
+
+### First run
+
+```bash
+node chrome-cdp/cdp.mjs start
+node chrome-cdp/cdp.mjs eval "location.href"
+```
+
+That last line must print the URL of whichever tab was in front. If it does, the machine is
+ready and the rest of this document applies.
+
+### When the machine will not cooperate
+
+| Symptom | Cause | Do |
+| --- | --- | --- |
+| `node: command not found` | Node is not installed | Install Node 22 or newer. Nothing else here changes. |
+| `typeof WebSocket` prints `undefined` | The Node is older than 22 | Install a current Node: that global is the transport. |
+| `{ "ports": [] }` | No Chrome process is listening, or discovery cannot see it | Start Chrome. On a Linux without `lsof` the list is also empty: read the port from `chrome://inspect` and pass `CDP_PORT=<port>`. |
+| The box cannot be checked | The browser is managed, and a policy can forbid remote debugging (`RemoteDebuggingAllowed`) | Ask whoever manages the machine. The only way round it is a separate Chrome launched with `--remote-debugging-port` and its own `--user-data-dir`, which will **not** carry the person's session. |
+| `chrome://inspect` has no **Remote debugging** page | An older Chrome, from before that page existed | Launch it with `--remote-debugging-port=9222`, which means closing it first and losing the running session. Then `CDP_PORT=9222 node chrome-cdp/cdp.mjs start`. |
+| The person browses in Edge, Brave or Chromium | Discovery looks for a process named `chrome` | The same protocol is behind their own inspect pages (`edge://inspect`, `brave://inspect`, `chrome://inspect`): read the port there and pass `CDP_PORT=<port>`. Everything else is unchanged. |
+
 ## Start
 
 ```bash
@@ -177,7 +256,7 @@ node cdp.mjs close <targetId>
 
 ## What was verified, and how
 
-On 2026-11-17, on Windows, Chrome 157.0.8103.78/.79:
+On 2026-11-17, on Windows, Chrome 157.0.8103.78/.79, Node 24.20.0:
 
 - the inspect endpoint answered `404` to `/json`, `/json/version`, `/json/list` and
   `/devtools/browser`, and `Browser.getVersion` over `ws://…/devtools/browser`;
@@ -189,8 +268,15 @@ On 2026-11-17, on Windows, Chrome 157.0.8103.78/.79:
 - `start`, `ping`, `targets`, `open`, `eval`, `eval --wait`, `shot` and the two error
   paths (`no page matching`, an exception inside the evaluated code) were exercised
   against a throwaway `--remote-debugging-port` Chrome on this same code;
+- `--probe` was exercised on both shapes: a launched debug port (`open`) and a port with
+  no listener (`refused`), and after moving the directory to a new path;
+- the missing-`WebSocket` guard was exercised by running the daemon with the global
+  switched off (`node --no-experimental-websocket`): it exits 2 and names the Node;
 - a second client against a launched debug port is accepted, which is why the one-client
   rule above is stated for the inspect endpoint and not in general.
 
-Not exercised: `Page.captureScreenshot` in the person's own Windows, and any non-Windows
-port discovery.
+Not exercised: `shot` against the person's own Chrome (only against a throwaway profile);
+the whole procedure on macOS or Linux, so the `lsof` branch of port discovery and a Linux
+without `lsof` are untested; an older Chrome without the **Remote debugging** page; a
+managed browser that refuses the box; and Edge, Brave or Chromium through `CDP_PORT`. Each
+of those rows is written from how the failure is known to behave, not from a run.

@@ -148,9 +148,11 @@ async function attach() {
   }
 
   const outcomes = [];
+  const details = [];
   for (const p of candidates) {
     const r = await probePort(p);
     outcomes.push(r.state);
+    if (r.detail) details.push(`${p}: ${r.detail}`);
     if (r.state === 'open') {
       port = p;
       ws = r.socket;
@@ -168,7 +170,13 @@ async function attach() {
         'or the permission was never granted.',
     };
   }
-  return { ok: false, reason: 'refused', detail: 'No listener on these ports speaks the DevTools protocol.' };
+  return {
+    ok: false,
+    reason: 'refused',
+    detail:
+      'No listener on these ports speaks the DevTools protocol.' +
+      (details.length ? ` (${details.join('; ')})` : ''),
+  };
 }
 
 function wireSocket() {
@@ -387,14 +395,29 @@ async function serve() {
 // ---------------------------------------------------------------------------
 
 async function main() {
+  // A missing global is the one failure that looks like a Chrome problem and is not. Say
+  // it once, before anything else tries to open a socket and reports "refused".
+  if (typeof WebSocket !== 'function') {
+    console.error(
+      `[chrome-cdp] this Node is ${process.version}, and it has no WebSocket global.\n` +
+        'The daemon speaks the DevTools protocol over WebSocket, which Node has from 22 on.\n' +
+        'Install a current Node, or start the daemon with one first on the path.',
+    );
+    process.exit(2);
+  }
+
   const probeOnly = process.argv.includes('--probe');
   const ports = process.env.CDP_PORT ? [Number(process.env.CDP_PORT)] : chromeListenPorts();
 
   if (probeOnly) {
     console.log(JSON.stringify({ ports }, null, 2));
+    if (!ports.length) {
+      console.log('  no port: no chrome process is listening, or discovery cannot see it');
+      return;
+    }
     for (const p of ports) {
       const r = await probePort(p);
-      console.log(`  ${p}: ${r.state}${r.product ? ' ' + r.product : ''}`);
+      console.log(`  ${p}: ${r.state}${r.product ? ' ' + r.product : ''}${r.detail ? ' — ' + r.detail : ''}`);
       if (r.socket) try { r.socket.close(); } catch {}
     }
     return;
