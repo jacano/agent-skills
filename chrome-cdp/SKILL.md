@@ -1,37 +1,29 @@
 ---
 name: chrome-cdp
 description: Drive the person's own Chrome — already signed in — over the DevTools protocol, and keep that one connection alive. Use when a task needs a page that only exists logged in in their browser, a tab they already have open, or a site that blocks a fresh automated browser.
-version: 1.0.0
+version: 1.1.0
 ---
 
 # chrome-cdp
 
-Three files: this one, [`cdp-daemon.mjs`](cdp-daemon.mjs) and [`cdp.mjs`](cdp.mjs).
-No dependencies; Node 22 or later for the global `WebSocket`. Nothing to install.
+Three files: this one, [`cdp-daemon.mjs`](cdp-daemon.mjs) and [`cdp.mjs`](cdp.mjs). No
+dependencies; Node 22 or later for the global `WebSocket`. Nothing to install.
 
-The person's Chrome is not a fresh browser. It is the one with their session, their
-cookies and their tabs — so it can read the page that needs a login, and it is not
-challenged the way a brand-new automated browser is. That is the whole value.
+They drive the person's *own* Chrome — the one with their session, cookies and tabs — so a
+page that needs a login can be read, and a site does not challenge it the way it challenges a
+fresh automated browser.
 
 ## The one rule
 
-**Chrome grants remote debugging to one external client per armed session.** The grant
-is spent by the connect, and closing the socket does not return it: the next attempt
-hangs with no error at all until a person goes back to the checkbox. Therefore:
+**Chrome grants remote debugging to one external client per armed session.** The grant is
+spent by the connect, and closing the socket does not return it: the next attempt hangs with
+no error until a person re-arms the box. So one long-lived process owns the socket and
+nothing else opens one. Never reconnect in a loop.
 
-- One long-lived process owns the socket. Never open, work and close.
-- Never reconnect in a loop. Each attempt against a spent grant is another silent hang.
-- If the daemon dies, a person has to re-arm the box once (below). Say so plainly; do
-  not present it as a bug they caused.
-
-A Chrome launched with `--remote-debugging-port` on a throwaway profile behaves
-differently and accepts several clients. That is the test profile, not the person's.
+(A Chrome launched with `--remote-debugging-port` on a throwaway profile accepts several
+clients. That is the test profile, not the person's.)
 
 ## A new machine, from nothing
-
-Nothing is installed for this skill: no `npm install`, no package, no build step, no
-configuration file. Two things have to exist on the machine, and one of them has to be
-allowed once.
 
 **1. Node 22 or newer.**
 
@@ -40,142 +32,63 @@ node --version                             # v22.x or later; written on v24
 node -e "console.log(typeof WebSocket)"    # must print: function
 ```
 
-`WebSocket` is the entire transport: the daemon speaks the DevTools protocol over it. On an
-older Node the daemon stops on its first line and says so, because the alternative is
-worse: a missing global and a missing Chrome both surface as `refused`, and the second one
-sends you looking at the wrong program.
+`WebSocket` is the whole transport. The daemon stops on its first line without it, because a
+missing global and a missing Chrome otherwise both surface as `refused`.
 
-**2. Chrome, running, with remote debugging allowed — once.**
+**2. Chrome, running, with remote debugging allowed — once.** Open `chrome://inspect` →
+**Remote debugging** → check **Allow remote debugging for this browser instance**. That page
+prints `Server running at: 127.0.0.1:<port>`: the port is random and the daemon finds it, but
+that is where to read it by eye, and it is the only place the grant is given or taken back.
 
-In the browser, open a tab and go to `chrome://inspect`, then **Remote debugging** in the
-left column, and check **Allow remote debugging for this browser instance**.
-
-That page is worth knowing for two reasons:
-
-- it prints **where it listens**, `Server running at: 127.0.0.1:<port>`. The port is random
-  and the daemon finds it on its own, but this is where to read it by eye when discovery
-  cannot;
-- it is the only place the grant is given, and the only place it is taken back.
-
-If there is no **Remote debugging** page at all, the Chrome predates it — see the table
-below.
-
-**3. This directory.** A clone is enough. The scripts have no dependencies and keep their
-state in the system temp directory, so a clone anywhere works.
+**3. This directory.** A clone is enough; state lives in the system temp directory.
 
 ```bash
 git clone https://github.com/jacano/agent-skills
 cd agent-skills
 ```
 
-### Check the machine before blaming the skill
+Check the machine before blaming the skill:
 
 ```bash
-node chrome-cdp/cdp-daemon.mjs --probe
+node chrome-cdp/cdp-daemon.mjs --probe     # the ports found, and what each one answers
 ```
 
-It lists every port a Chrome is listening on and what each one answers, without attaching
-and without writing any state:
-
-```
-{ "ports": [ 62442 ] }
-  62442: open Chrome/157.0.8103.78
-```
-
-`open` is the answer you want. An empty `ports` list means no Chrome is listening, or the
-port could not be discovered — see the table below. `hung` and `refused` are the two
-failures described under **The two failures**, further down.
-
-### First run
+`open` is the answer you want. Then:
 
 ```bash
 node chrome-cdp/cdp.mjs start
 node chrome-cdp/cdp.mjs eval "location.href"
 ```
 
-That last line must print the URL of whichever tab was in front. If it does, the machine is
-ready and the rest of this document applies.
+That must print a URL. If it does, the machine is ready.
 
-### When the machine will not cooperate
+### When it will not cooperate
 
-| Symptom | Cause | Do |
-| --- | --- | --- |
-| `node: command not found` | Node is not installed | Install Node 22 or newer. Nothing else here changes. |
-| `typeof WebSocket` prints `undefined` | The Node is older than 22 | Install a current Node: that global is the transport. |
-| `{ "ports": [] }` | No Chrome process is listening, or discovery cannot see it | Start Chrome. On a Linux without `lsof` the list is also empty: read the port from `chrome://inspect` and pass `CDP_PORT=<port>`. |
-| The box cannot be checked | The browser is managed, and a policy can forbid remote debugging (`RemoteDebuggingAllowed`) | Ask whoever manages the machine. The only way round it is a separate Chrome launched with `--remote-debugging-port` and its own `--user-data-dir`, which will **not** carry the person's session. |
-| `chrome://inspect` has no **Remote debugging** page | An older Chrome, from before that page existed | Launch it with `--remote-debugging-port=9222`, which means closing it first and losing the running session. Then `CDP_PORT=9222 node chrome-cdp/cdp.mjs start`. |
-| The person browses in Edge, Brave or Chromium | Discovery looks for a process named `chrome` | The same protocol is behind their own inspect pages (`edge://inspect`, `brave://inspect`, `chrome://inspect`): read the port there and pass `CDP_PORT=<port>`. Everything else is unchanged. |
-
-## Start
-
-```bash
-node chrome-cdp/cdp.mjs start     # attach once; idempotent; safe to repeat
-node chrome-cdp/cdp.mjs ping
-```
-
-`start` spawns the daemon detached, waits for the attach and prints
-`{ok, port, product, pages}`. If the attach cannot be made it exits non-zero and says
-which of the two failures happened. Run everything else from the same tree.
-
-Every other command fails in about 40 ms when no daemon is attached — it reads the pid
-file rather than waiting on a deadline — so a wrong assumption costs a line of output,
-not a timeout.
+| Symptom | Do |
+| --- | --- |
+| `node: command not found`, or `typeof WebSocket` is `undefined` | Install Node 22 or newer. |
+| `{ "ports": [] }` | No Chrome listening. On a Linux without `lsof`, read the port from `chrome://inspect` and pass `CDP_PORT=<port>`. |
+| The box cannot be checked | The browser is managed and a policy forbids remote debugging (`RemoteDebuggingAllowed`). Only a separate Chrome with `--remote-debugging-port` and its own `--user-data-dir` gets round it, and it will not carry their session. |
+| No **Remote debugging** page at all | An older Chrome. `--remote-debugging-port=9222` means closing it first and losing the running session. |
+| They browse in Edge, Brave or Chromium | Read the port from their own `edge://inspect` and pass `CDP_PORT=<port>`. |
 
 ## The two failures, and they are not the same
 
-| Daemon says | Means | Do |
+| The daemon says | Means | Do |
 | --- | --- | --- |
-| `refused` | No listener on those ports speaks DevTools. Chrome is closed, or the box is unchecked. | Ask them to open `chrome://inspect/#remote-debugging` and check **Allow remote debugging for this browser instance**, then `start` again. |
-| `hung` | The server is there and answered nothing: the one client slot is taken, by a dead daemon or an already-spent grant. | **Uncheck, wait a second, re-check** the same box. Then `start` once. |
+| `refused` | Nothing on those ports speaks DevTools: Chrome is closed, or the box is unchecked. | Open `chrome://inspect/#remote-debugging`, check the box, `start` again. |
+| `hung` | The server is there and said nothing: the one slot is taken, by a dead daemon or a spent grant. | **Uncheck, wait a second, re-check** the box. Then `start` once. |
 
-`refused` comes back in milliseconds. `hung` costs the full 6-second probe timeout. That
-difference is the diagnosis, so never read a hang as "port wrong" and try another port.
+`refused` answers in milliseconds, `hung` costs the full 6-second probe: that difference is
+the diagnosis, so never read a hang as "wrong port".
 
-`node cdp-daemon.mjs --probe` prints the ports discovered and what each one answers,
-without attaching and without writing the pid file. Use it first when something is off.
+## What not to reach for
 
-## Why the obvious approaches do not work
-
-| Attempt | What happens |
-| --- | --- |
-| `chrome --remote-debugging-port=9222` on the default profile | Current Chrome (seen on 157) does not offer a debugging port on the default profile. The `chrome://inspect` box is the supported way, and it picks a random port. |
-| `chromium.connectOverCDP('http://127.0.0.1:<port>')` | It calls HTTP `/json/version` first. The inspect endpoint answers **404 to every HTTP path**, so Playwright reports "Unexpected status 404". |
-| `connectOverCDP('ws://127.0.0.1:<port>/devtools/browser')` | Times out at 30 s. The socket is fine; Playwright still wants the HTTP endpoint for version and targets. |
-| Copying the profile's `Cookies` while Chrome runs | The SQLite file is held with an exclusive lock. Even `robocopy /B` fails. This is why the person's *session* needs CDP, not the cookie jar. |
-
-So: raw DevTools protocol over `WebSocket`, and nothing above it.
-
-## What the endpoint looks like
-
-The `chrome://inspect` server listens on `127.0.0.1:<random>`, and:
-
-- answers `404` to `/json`, `/json/version`, `/json/list`, `/devtools/browser` over HTTP;
-- accepts `ws://127.0.0.1:<port>/devtools/browser` and answers `Browser.getVersion`.
-
-The port is random per Chrome start and survives a Chrome patch update, but not a
-restart. Never hardcode it: the daemon discovers it (Windows: `Get-NetTCPConnection`
-filtered by the chrome pids; macOS/Linux: `lsof -nP -iTCP -sTCP:LISTEN`). `CDP_PORT`
-overrides discovery when you know the port.
-
-A launched `--remote-debugging-port` is the other shape: HTTP works, `/json/version`
-returns a websocket URL with a GUID, and that exact URL is what to connect to. The
-daemon handles both, so the same code drives a test profile and the real browser.
-
-## The daemon and the queue
-
-The daemon holds the socket; everything else writes a request file and reads a reply.
-
-```
-$TMP/chrome-cdp/queue/<id>.req.json   {"id","cmd","args"}
-$TMP/chrome-cdp/queue/<id>.res.json   {"id","ok":true,"result":...}
-$TMP/chrome-cdp/daemon.pid
-$TMP/chrome-cdp/daemon.log
-```
-
-Files rather than a socket of our own, so a one-line shell command, a Python script and
-an agent all use it without a client library, and the daemon can start from any cwd
-(`$TMP` is shared, not the repo). `cdp.mjs` is only a thin wrapper over that queue.
+`--remote-debugging-port` on the default profile (Chrome no longer offers it),
+`chromium.connectOverCDP` (it calls HTTP `/json/version` first, and the inspect endpoint
+answers 404 to every HTTP path), and copying the profile's `Cookies` while Chrome runs (SQLite
+holds an exclusive lock). The endpoint takes `ws://127.0.0.1:<port>/devtools/browser` and
+nothing above it. `CDP_PORT` overrides the port discovery.
 
 ## Commands
 
@@ -184,100 +97,49 @@ an agent all use it without a client library, and the daemon can start from any 
 | `start` / `stop` | attach (idempotent) / close the daemon |
 | `ping` | `{port, product, protocol, pages}` |
 | `targets` | every page target: `{id, title, url}` |
-| `open <url> [--foreground]` | `{targetId}`; **background by default**, so focus stays where they left it |
+| `open <url> [--foreground]` | `{targetId}`; background by default, focus untouched |
 | `eval [--url substr] [--target id] [--wait] [--timeout ms] <expr>` | the expression's value |
 | `close <targetId>` | `{closed}` |
-| `activate <targetId>` | bring a tab to the front (this is the person's screen) |
-| `shot <file> [--url substr] [--target id]` | `{path, bytes}` — brings the tab to the front to render it |
+| `activate <targetId>` | bring a tab to the front (their screen) |
+| `shot <file> [--url substr]` | `{path, bytes}`; brings the tab forward to render it |
 
-`eval` is the whole DOM API: select, click, type, scroll, read. No brittle helper layer.
-A returned object or array is passed through as JSON. `--wait` polls every 300 ms until
-the value is truthy, which is how a page is allowed to settle:
-
-```bash
-node cdp.mjs eval --url example.com --wait "document.readyState === 'complete'"
-node cdp.mjs eval --url example.com "document.querySelectorAll('tr').length"
-```
+`eval` is the whole DOM API and returns objects as JSON. `--wait` polls every 300 ms until the
+value is truthy, which is how a page is allowed to settle. Every command fails in about 40 ms
+when no daemon is attached, so a wrong assumption costs a line, not a timeout.
 
 ## Recipes
 
-**Read a page they are already signed in to.** Open it in the background if it is not
-open, wait for the content, read the text:
-
 ```bash
-node cdp.mjs open "https://example.com/dashboard"
-node cdp.mjs eval --url example.com --wait "document.querySelector('.row')?.innerText"
-node cdp.mjs eval --url example.com "document.body.innerText.slice(0, 4000)"
-```
+# read a page they are already signed in to
+node chrome-cdp/cdp.mjs open "https://example.com/dashboard"
+node chrome-cdp/cdp.mjs eval --url example.com --wait "document.querySelector('.row')?.innerText"
 
-**Fill and submit a form.** Set values the way a framework notices — assign, then
-dispatch `input` and `change`:
+# set a field the way a framework notices, click, then wait for the result
+node chrome-cdp/cdp.mjs eval --url example.com "(el => { el.value = 'x'; el.dispatchEvent(new Event('input', {bubbles:true})); })(document.querySelector('#name'))"
+node chrome-cdp/cdp.mjs eval --url example.com "(el => { el.scrollIntoView(); el.click(); })(document.querySelector('button[type=submit]'))"
+node chrome-cdp/cdp.mjs eval --url example.com --wait --timeout 60000 "!!document.querySelector('.confirmation')"
 
-```bash
-node cdp.mjs --url example.com eval "(el => {
-  el.value = 'Juan';
-  el.dispatchEvent(new Event('input', { bubbles: true }));
-  el.dispatchEvent(new Event('change', { bubbles: true }));
-})(document.querySelector('#name'))"
-```
-
-**Click.** A real `click()` on a detached node does nothing; click the node that is in
-the document, and scroll it into view first:
-
-```bash
-node cdp.mjs eval --url example.com "(el => { el.scrollIntoView(); el.click(); })(document.querySelector('button[type=submit]'))"
-```
-
-Then wait for what the click produces, not for a duration:
-
-```bash
-node cdp.mjs eval --url example.com --wait --timeout 60000 "!!document.querySelector('.confirmation')"
-```
-
-**Close a tab you opened.** Do not leave tabs behind in their browser:
-
-```bash
-node cdp.mjs close <targetId>
+# close what you opened
+node chrome-cdp/cdp.mjs close <targetId>
 ```
 
 ## Rules of engagement
 
-- **Do not tidy up the socket.** A `stop` is only for a deliberate restart; leaving the
-  daemon running costs nothing and re-attaching costs a person's click.
-- **Do not kill chrome processes** and do not launch a second Chrome on their profile.
-  Closing their browser to "start clean" destroys the session you came for.
-- **Background by default.** `open` without `--foreground`, and no `activate` unless the
-  person has to look at the page. `shot` does bring a tab to the front; say so.
-- **The banner is expected.** While the daemon is attached, Chrome shows "Chrome is
-  being controlled by automated test software". Nothing needs turning off.
-- **Their session is their identity.** Reading a page is one thing; pressing a button
-  that spends money, sends a message or deletes something is another. Confirm first.
-- **Close what you open, keep what was theirs.** Tabs you created are yours to close.
-  A tab that was already there stays.
+- **Do not tidy up the socket.** `stop` is for a deliberate restart; re-attaching costs a
+  person's click.
+- **Do not kill Chrome**, and do not launch a second Chrome on their profile: that destroys
+  the session you came for.
+- **Background by default**, and no `activate` unless they have to look. `shot` does bring a
+  tab forward; say so.
+- **Their session is their identity.** Reading is yours; pressing a button that spends money,
+  sends a message or deletes something is theirs to approve.
+- **Close what you open, keep what was theirs.**
 
-## What was verified, and how
+The "Chrome is being controlled by automated test software" banner is expected while the
+daemon is attached. Nothing needs turning off.
 
-On 2026-11-17, on Windows, Chrome 157.0.8103.78/.79, Node 24.20.0:
+## What was tested
 
-- the inspect endpoint answered `404` to `/json`, `/json/version`, `/json/list` and
-  `/devtools/browser`, and `Browser.getVersion` over `ws://…/devtools/browser`;
-- `Target.getTargets`, `Target.createTarget` (background), `Target.attachToTarget`
-  with `flatten: true`, `Runtime.evaluate` with `returnByValue` and the single-client
-  behaviour were exercised against the person's live profile — reading a signed-in page
-  in a background tab and closing it;
-- `chromium.connectOverCDP` failed both ways described in the table above;
-- `start`, `ping`, `targets`, `open`, `eval`, `eval --wait`, `shot` and the two error
-  paths (`no page matching`, an exception inside the evaluated code) were exercised
-  against a throwaway `--remote-debugging-port` Chrome on this same code;
-- `--probe` was exercised on both shapes: a launched debug port (`open`) and a port with
-  no listener (`refused`), and after moving the directory to a new path;
-- the missing-`WebSocket` guard was exercised by running the daemon with the global
-  switched off (`node --no-experimental-websocket`): it exits 2 and names the Node;
-- a second client against a launched debug port is accepted, which is why the one-client
-  rule above is stated for the inspect endpoint and not in general.
-
-Not exercised: `shot` against the person's own Chrome (only against a throwaway profile);
-the whole procedure on macOS or Linux, so the `lsof` branch of port discovery and a Linux
-without `lsof` are untested; an older Chrome without the **Remote debugging** page; a
-managed browser that refuses the box; and Edge, Brave or Chromium through `CDP_PORT`. Each
-of those rows is written from how the failure is known to behave, not from a run.
+Windows, Chrome 157, Node 24: the attach, `--probe` on both shapes, every command above, the
+missing-`WebSocket` guard, and `shot`. Not tested: macOS or Linux, an older Chrome, a managed
+browser, and Edge or Brave through `CDP_PORT`.
