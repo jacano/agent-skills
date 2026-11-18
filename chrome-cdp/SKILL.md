@@ -1,7 +1,7 @@
 ---
 name: chrome-cdp
 description: Drive the person's own Chrome — already signed in — over the DevTools protocol, and keep that one connection alive. Use when a task needs a page that only exists logged in in their browser, a tab they already have open, or a site that blocks a fresh automated browser.
-version: 1.2.0
+version: 1.3.0
 ---
 
 # chrome-cdp
@@ -16,9 +16,11 @@ Nothing to install: Node 22 or later, for the global `WebSocket`.
 ## The one rule
 
 **Chrome grants remote debugging to one external client per armed session.** The grant is
-spent by the connect, and closing the socket does not return it: the next attempt hangs, with
-no error, until a person re-arms the box. So one long-lived process owns the socket, and
-nothing else opens one.
+spent by the connect, and closing the socket does not return it: the next client asks the
+person to allow debugging again and waits for the answer. On Chrome 157 the Allow prompt
+arrives per client, so a script that opens its own socket per command is a click per command.
+So one long-lived process owns the socket, and nothing else opens one — not a second daemon,
+and not a "quick" client of your own in Python or Node.
 
 A Chrome started with `--remote-debugging-port` on a throwaway profile takes several clients.
 That is the test profile, not theirs.
@@ -50,10 +52,13 @@ cd agent-skills
 Check the machine before blaming the skill:
 
 ```bash
-node chrome-cdp/cdp-daemon.mjs --probe     # the ports found, and what each one answers
+node chrome-cdp/cdp-daemon.mjs --probe     # the port Chrome named, and whether it listens
 ```
 
-`open` is the answer you want. Then:
+Chrome writes its port into the profile's `DevToolsActivePort`, and the probe reads it
+instead of connecting: a DevTools probe is itself a client, and would spend the grant. Only
+when no such file exists does it fall back to scanning and probing, and then `open` is the
+answer you want. Then:
 
 ```bash
 node chrome-cdp/cdp.mjs start
@@ -70,6 +75,7 @@ That must print a URL. If it does, the machine is ready.
 | `{ "ports": [] }` | No Chrome listening, or discovery cannot see it | Start Chrome. On a Linux without `lsof`, read the port from `chrome://inspect` and pass `CDP_PORT=<port>`. |
 | `refused` | Nothing on those ports speaks DevTools: Chrome is closed, or the box is unchecked | Check the box in `chrome://inspect/#remote-debugging`, then `start` again. |
 | `hung` | The server is there and said nothing: the one slot is taken, by a dead daemon or a spent grant | **Uncheck, wait a second, re-check** the box. Then `start` once. |
+| Asked to Allow, once per step | A client per command: something opened its own socket for each eval, or a second daemon is running | Stop it; `cdp.mjs` is the only client, and the one daemon owns the socket |
 | The box cannot be checked | The browser is managed, and a policy forbids remote debugging (`RemoteDebuggingAllowed`) | Only a separate Chrome with `--remote-debugging-port` and its own `--user-data-dir` gets round it, and it will not carry their session. |
 | No **Remote debugging** page at all | An older Chrome | `--remote-debugging-port=9222` works, but it means closing Chrome and losing the running session. |
 | They browse in Edge, Brave or Chromium | Discovery looks for a process named `chrome` | Read the port from their own `edge://inspect` and pass `CDP_PORT=<port>`. |
@@ -84,6 +90,10 @@ Three dead ends, each costing an afternoon: `--remote-debugging-port` on the def
 and the inspect endpoint answers 404 to every HTTP path), and copying the profile's `Cookies`
 while Chrome runs (SQLite keeps an exclusive lock). The endpoint takes
 `ws://127.0.0.1:<port>/devtools/browser`; `CDP_PORT` overrides the discovery.
+
+A fourth is writing a CDP client of your own — even a twenty-line one in Python — because
+every connect is a client, and every client costs the person another Allow. The daemon
+already speaks the protocol; ask it, and let it keep the socket.
 
 ## Commands
 
@@ -135,6 +145,8 @@ daemon is attached. Nothing needs turning off.
 
 ## What was tested
 
-Windows, Chrome 157, Node 24: the attach, `--probe` on both shapes, every command above, the
-missing-`WebSocket` guard, and `shot`. Not tested: macOS or Linux, an older Chrome, a managed
-browser, and Edge or Brave through `CDP_PORT`.
+Windows, Chrome 157, Node 24: the attach, `--probe` on both shapes, the `DevToolsActivePort`
+discovery and the probe that answers without connecting, every command above, the
+missing-`WebSocket` guard, and `shot`. Also observed on Chrome 157: each new external client
+is asked to allow debugging again, which is what a client per command costs. Not tested:
+macOS or Linux, an older Chrome, a managed browser, and Edge or Brave through `CDP_PORT`.

@@ -23,6 +23,7 @@
  */
 
 import fs from 'node:fs';
+import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -78,6 +79,55 @@ function chromeListenPorts() {
   } catch {
     return [];
   }
+}
+
+/**
+ * The port Chrome wrote down itself, in the profile's DevToolsActivePort file, first line.
+ * Reading it costs nothing; every port guessed by scanning costs the one grant if it
+ * happens to be the DevTools one, so these come first and are tried before the scan.
+ */
+function declaredPorts() {
+  const home = os.homedir();
+  const files = [];
+  if (process.platform === 'win32') {
+    const local = process.env.LOCALAPPDATA;
+    if (local) {
+      files.push(path.join(local, 'Google', 'Chrome', 'User Data', 'DevToolsActivePort'));
+      files.push(path.join(local, 'Chromium', 'User Data', 'DevToolsActivePort'));
+    }
+  } else if (process.platform === 'darwin') {
+    files.push(path.join(home, 'Library', 'Application Support', 'Google', 'Chrome', 'DevToolsActivePort'));
+  } else {
+    files.push(path.join(home, '.config', 'google-chrome', 'DevToolsActivePort'));
+    files.push(path.join(home, '.config', 'chromium', 'DevToolsActivePort'));
+  }
+  const ports = [];
+  for (const file of files) {
+    try {
+      const n = Number(fs.readFileSync(file, 'utf8').split('\n')[0].trim());
+      if (n > 0) ports.push(n);
+    } catch {}
+  }
+  return [...new Set(ports)];
+}
+
+/** Is something listening there? A TCP connect spends nothing; a DevTools connect spends the grant. */
+function tcpOpen(p) {
+  return new Promise((resolve) => {
+    const sock = net.connect({ host: '127.0.0.1', port: p });
+    let settled = false;
+    const done = (value) => {
+      if (settled) return;
+      settled = true;
+      try {
+        sock.destroy();
+      } catch {}
+      resolve(value);
+    };
+    sock.once('connect', () => done(true));
+    sock.once('error', () => done(false));
+    setTimeout(() => done(false), 1500);
+  });
 }
 
 /**
@@ -142,7 +192,7 @@ async function probePort(p) {
 
 async function attach() {
   const forced = Number(process.env.CDP_PORT || 0);
-  const candidates = forced ? [forced] : chromeListenPorts();
+  const candidates = forced ? [forced] : [...new Set([...declaredPorts(), ...chromeListenPorts()])];
   if (!candidates.length) {
     return { ok: false, reason: 'no-port', detail: 'No chrome process is listening on any TCP port.' };
   }
@@ -407,12 +457,27 @@ async function main() {
   }
 
   const probeOnly = process.argv.includes('--probe');
-  const ports = process.env.CDP_PORT ? [Number(process.env.CDP_PORT)] : chromeListenPorts();
+  const declared = process.env.CDP_PORT ? [] : declaredPorts();
+  const ports = process.env.CDP_PORT
+    ? [Number(process.env.CDP_PORT)]
+    : [...new Set([...declared, ...chromeListenPorts()])];
 
   if (probeOnly) {
     console.log(JSON.stringify({ ports }, null, 2));
     if (!ports.length) {
       console.log('  no port: no chrome process is listening, or discovery cannot see it');
+      return;
+    }
+    // A DevTools probe is a client, and that spends the one grant the daemon needs. When
+    // Chrome named its port, check only that the port is up and leave the grant alone.
+    if (declared.length) {
+      for (const p of declared) {
+        const open = await tcpOpen(p);
+        console.log(
+          `  ${p}: named by Chrome in DevToolsActivePort, ${open ? 'listening' : 'not listening'}` +
+            ' (not a DevTools probe: that spends the grant)',
+        );
+      }
       return;
     }
     for (const p of ports) {
